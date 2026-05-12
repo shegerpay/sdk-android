@@ -1,3 +1,5 @@
+<p align="center"><img src="logo.png" alt="ShegerPay" width="200" /></p>
+
 # ShegerPay Android Kotlin SDK
 
 Official Android SDK for ShegerPay — Ethiopian payment verification.
