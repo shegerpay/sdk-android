@@ -1,81 +1,297 @@
-<p align="center"><img src="logo.png" alt="ShegerPay" width="200" /></p>
-
 # ShegerPay Android SDK
 
-[![Version](https://img.shields.io/badge/version-2.2.0-blue)](https://github.com/shegerpay/sdk-android/releases)
-[![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
-[![Android](https://img.shields.io/badge/Android-API%2021%2B-green)](https://developer.android.com)
+Official Android SDK for ShegerPay Payment Verification Gateway.
 
-Official Android SDK for ShegerPay — verify Ethiopian bank payments (CBE, Telebirr, BOA, Awash).
+## 📦 Installation
 
-## Install
+### Gradle (Kotlin DSL)
 
 ```kotlin
-// build.gradle.kts (app)
 dependencies {
-    implementation("com.shegerpay:sdk-android:2.2.0")
+    implementation("com.shegerpay:sdk:2.2.0")
 }
 ```
 
-## Quick Start
+### Gradle (Groovy)
+
+```groovy
+dependencies {
+    implementation 'com.shegerpay:sdk:2.2.0'
+}
+```
+
+### JitPack
+
+Add to your root `build.gradle`:
+
+```groovy
+allprojects {
+    repositories {
+        maven { url 'https://jitpack.io' }
+    }
+}
+```
+
+Then add:
+
+```groovy
+dependencies {
+    implementation 'com.github.shegerpay:android-sdk:2.2.0'
+}
+```
+
+---
+
+## 🚀 Quick Start
+
+### Kotlin (Recommended)
 
 ```kotlin
 import com.shegerpay.sdk.ShegerPay
 
-val client = ShegerPay(apiKey = "sk_live_YOUR_API_KEY")
+// Initialize client
+val client = ShegerPay("sk_test_xxx")
 
-// In a coroutine (e.g. viewModelScope.launch):
+// Verify Ethiopian payment (in a coroutine)
+lifecycleScope.launch {
+    val result = client.verify(
+        transactionId = "FT24352648751234",
+        amount = 100.0,
+        provider = PaymentProvider.CBE
+    )
 
-// Verify a payment
-val result = client.verify(
-    transactionId = "FT26062K7WMY",
-    provider = "cbe",
-    amount = 1000.0
-)
-if (result.verified) {
-    // ✅ Payment confirmed
+    if (result.valid) {
+        Log.d("ShegerPay", "✅ Payment verified!")
+        Log.d("ShegerPay", "Payer: ${result.payer}")
+    }
 }
-
-// Verify without amount (lookup only)
-val result2 = client.verify(transactionId = "FT26062K7WMY", provider = "telebirr")
-println(result2.status)
-
-// Verify from receipt screenshot
-val bitmap = BitmapFactory.decodeFile(receiptPath)
-val stream = ByteArrayOutputStream()
-bitmap.compress(Bitmap.CompressFormat.JPEG, 80, stream)
-val imageBase64 = Base64.encodeToString(stream.toByteArray(), Base64.DEFAULT)
-val imgResult = client.verifyImage(imageBase64, provider = "cbe")
-
-// Create payment link
-val link = client.createPaymentLink(
-    title = "Order #1234",
-    amount = 1500.0,
-    currency = "ETB"
-)
-println(link["url"])
-
-// Get providers list
-val providers = client.getProviders()
 ```
 
-**In ViewModel:**
+### Java
+
+```java
+import com.shegerpay.sdk.ShegerPayJava;
+import com.shegerpay.sdk.ShegerPayCallback;
+import com.shegerpay.sdk.VerificationResult;
+
+// Initialize client
+ShegerPayJava client = new ShegerPayJava("sk_test_xxx");
+
+// Verify payment
+client.verify("FT24352648751234", 100.0, new ShegerPayCallback<VerificationResult>() {
+    @Override
+    public void onSuccess(VerificationResult result) {
+        if (result.getValid()) {
+            Log.d("ShegerPay", "✅ Payment verified!");
+        }
+    }
+
+    @Override
+    public void onError(ShegerPayException error) {
+        Log.e("ShegerPay", "Error: " + error.getMessage());
+    }
+});
+```
+
+---
+
+## 💳 Ethiopian Payment Verification
+
+### Auto-Detect Provider
+
 ```kotlin
-viewModelScope.launch {
-    val result = client.verify(txId, provider = "cbe", amount = amount)
-    _uiState.value = if (result.verified) UiState.Success else UiState.Failed
+// Use quickVerify() when the provider is ambiguous.
+val result = client.quickVerify(
+    transactionId = "FT24352648751234",
+    amount = 100.0
+)
+```
+
+### BOA Verification
+
+```kotlin
+val result = client.verify(
+    transactionId = "https://cs.bankofabyssinia.com/slip/?trx=FT26091B1X5152078",
+    amount = 100.0,
+    provider = PaymentProvider.BOA,
+    merchantName = "My Shop",
+    senderAccount = "52078"
+)
+```
+
+### Specify Provider
+
+```kotlin
+import com.shegerpay.sdk.PaymentProvider
+
+val result = client.verify(
+    transactionId = "FT24352648751234",
+    amount = 100.0,
+    provider = PaymentProvider.CBE,
+    merchantName = "My Shop"
+)
+```
+
+### Supported Providers
+
+| Provider | Enum                       | ID Format        |
+| -------- | -------------------------- | ---------------- |
+| CBE      | `PaymentProvider.CBE`      | `FT` prefix      |
+| Telebirr | `PaymentProvider.TELEBIRR` | Reference number |
+| Awash    | `PaymentProvider.AWASH`    | `AW` prefix      |
+| BoA      | `PaymentProvider.BOA`      | Receipt URL / full `trx` |
+| E-Birr   | `PaymentProvider.EBIRR`    | Reference code   |
+
+---
+
+## 🖼 Receipt Image Verification
+
+```kotlin
+// Verify from base64-encoded screenshot
+val result = client.verifyImage(
+    image = "iVBORw0KGgoAAAANSUhEUgAA...",  // base64 string
+    provider = "cbe",
+    amount = 150.0,
+    merchantName = "My Shop"
+)
+
+if (result.valid) {
+    Log.d("ShegerPay", "Payment verified from receipt image!")
+}
+
+// Or verify from a public URL
+val result2 = client.verifyImage(
+    image = "https://example.com/receipt.png",
+    merchantName = "My Shop"
+)
+```
+
+---
+
+## 📋 Get Supported Providers
+
+```kotlin
+val providers = client.getProviders()
+Log.d("ShegerPay", providers.toString())
+```
+
+---
+
+## 🔗 Payment Links
+
+### Create Payment Link
+
+```kotlin
+val link = client.createPaymentLink(
+    title = "Product Purchase",
+    amount = 500.0,
+    currency = "ETB",
+    description = "Premium subscription",
+    enableCbe = true,
+    enableTelebirr = true,
+    enableCrypto = false
+)
+
+Log.d("ShegerPay", "Payment URL: ${link.paymentUrl}")
+Log.d("ShegerPay", "QR Code: ${link.qrCodeBase64}")
+```
+
+### List Payment Links
+
+```kotlin
+val links = client.listPaymentLinks(limit = 50)
+links.forEach { link ->
+    Log.d("ShegerPay", "${link.title}: ${link.status}")
 }
 ```
 
-## Supported Providers
-`cbe` · `telebirr` · `boa` · `awash` · `ebirr_kaafi` · `ebirr_coop`
+---
 
-## Requirements
-- Android API 21+ (Android 5.0+)
-- Kotlin 1.6+
+## 🪙 Crypto Payments
 
+### Generate Payment Intent
 
-## Support
-- 📚 Docs: https://shegerpay.com/docs
-- 💬 Telegram: [@shegerpay_0](https://t.me/shegerpay_0)
-- 📧 Email: support@shegerpay.com
+```kotlin
+val intent = client.generateCryptoIntent(
+    amountUsd = 50.0,
+    walletAddress = "TJCnKsPa7y5okkXvQAidZBzqx3QyQ6sxMW",
+    currency = "USDT",
+    chain = "TRON"
+)
+
+Log.d("ShegerPay", "Send ${intent.paymentAmount} to ${intent.walletAddress}")
+Log.d("ShegerPay", "Reference: ${intent.referenceId}")
+```
+
+### Verify Crypto Payment
+
+```kotlin
+val result = client.verifyCrypto(referenceId = "SHGR-TRO-ABC123")
+if (result.valid) {
+    Log.d("ShegerPay", "Crypto payment confirmed!")
+}
+```
+
+---
+
+## 🔔 Webhook Verification
+
+```kotlin
+fun handleWebhook(payload: String, signature: String): Boolean {
+    return ShegerPay.verifyWebhookSignature(
+        payload = payload,
+        signature = signature,
+        secret = "whsec_your_webhook_secret"
+    )
+}
+```
+
+---
+
+## ⚙️ Configuration
+
+### Custom Base URL
+
+```kotlin
+val client = ShegerPay(
+    apiKey = "sk_test_xxx",
+    baseUrl = "https://custom-api.example.com"
+)
+```
+
+### Check Test Mode
+
+```kotlin
+if (client.isTestMode) {
+    Log.d("ShegerPay", "Running in test mode")
+}
+```
+
+---
+
+## 🧪 Test Mode
+
+Use `sk_test_*` API keys for testing:
+
+| Transaction ID | Result     |
+| -------------- | ---------- |
+| `FT123456`     | ✅ Success |
+| `FAIL_TEST`    | ❌ Failed  |
+| `PENDING_123`  | ⏳ Pending |
+
+---
+
+## 📋 ProGuard Rules
+
+Add to your `proguard-rules.pro`:
+
+```proguard
+-keep class com.shegerpay.sdk.** { *; }
+-keepclassmembers class com.shegerpay.sdk.** { *; }
+```
+
+---
+
+## 📄 License
+
+MIT © 2026 ShegerPay
