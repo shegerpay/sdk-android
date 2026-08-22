@@ -3,7 +3,7 @@
  * Official Android SDK for ShegerPay Payment Verification Gateway
  * 
  * Installation (Gradle):
- *   implementation("com.shegerpay:sdk:2.2.0")
+ *   implementation("com.shegerpay:sdk:2.2.1")
  * 
  * Usage:
  *   val client = ShegerPay("sk_test_xxx")
@@ -18,6 +18,7 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -199,18 +200,28 @@ class ShegerPay(
     // ============================================
 
     /**
-     * Verify payment from a receipt screenshot (base64 or URL)
+     * Verify from a receipt image/screenshot (or PDF).
+     *
+     * Works for ANY supported bank — the backend reads the receipt's QR code
+     * (CBE, Telebirr, BOA…) or OCRs the reference and auto-detects the provider.
+     * Just pass the image bytes; no need to know the bank or pre-extract the reference.
      */
     suspend fun verifyImage(
-        image: String,
-        provider: String? = null,
+        screenshot: ByteArray,
         amount: Double? = null,
-        merchantName: String = "ShegerPay Verification"
+        provider: String? = null,
+        transactionId: String? = null,
+        merchantName: String? = null,
+        senderAccount: String? = null,
+        filename: String = "receipt.png"
     ): VerificationResult {
-        val params = mutableMapOf<String, Any>("image" to image, "merchant_name" to merchantName)
-        provider?.let { params["provider"] = it }
-        amount?.let { params["amount"] = it }
-        return post("/api/v1/verify/image", params)
+        val fields = mutableMapOf<String, String>()
+        amount?.let { fields["amount"] = it.toString() }
+        provider?.let { fields["provider"] = it }
+        transactionId?.let { fields["transaction_id"] = it }
+        merchantName?.let { fields["merchant_name"] = it }
+        senderAccount?.let { fields["sender_account"] = it }
+        return postMultipart("/api/v1/verify-image", "screenshot", screenshot, filename, fields)
     }
 
     // ============================================
@@ -320,10 +331,36 @@ class ShegerPay(
             .addHeader("Content-Type", "application/json")
             .addHeader("User-Agent", "ShegerPay-Android-SDK/$SDK_VERSION")
             .build()
-        
+
         return execute(request)
     }
-    
+
+    /** POST multipart/form-data (used for receipt-image upload). */
+    private inline fun <reified T> postMultipart(
+        path: String,
+        fileField: String,
+        fileBytes: ByteArray,
+        filename: String,
+        fields: Map<String, String>
+    ): T {
+        val bodyBuilder = MultipartBody.Builder().setType(MultipartBody.FORM)
+        for ((k, v) in fields) bodyBuilder.addFormDataPart(k, v)
+        bodyBuilder.addFormDataPart(
+            fileField,
+            filename,
+            fileBytes.toRequestBody("application/octet-stream".toMediaType(), 0, fileBytes.size)
+        )
+        // OkHttp sets the multipart Content-Type (with boundary) from the body.
+        val request = Request.Builder()
+            .url("$baseUrl$path")
+            .post(bodyBuilder.build())
+            .addHeader("X-API-Key", apiKey)
+            .addHeader("User-Agent", "ShegerPay-Android-SDK/$SDK_VERSION")
+            .build()
+
+        return execute(request)
+    }
+
     private inline fun <reified T> execute(request: Request): T {
         val response = httpClient.newCall(request).execute()
         val body = response.body?.string() ?: ""
@@ -338,7 +375,7 @@ class ShegerPay(
     
     companion object {
         private const val DEFAULT_BASE_URL = "https://api.shegerpay.com"
-        private const val SDK_VERSION = "2.2.0"
+        private const val SDK_VERSION = "2.2.1"
         private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
         
         /**
